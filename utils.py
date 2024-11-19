@@ -91,18 +91,27 @@ def check_accuracy(loader, model, device="cuda"):
     num_correct = 0
     num_pixels = 0
     dice_score = 0
-    model.eval()  # Set the model to evaluation mode
-    with torch.no_grad():  # Disable gradient computation
+    model.eval()
+    with torch.no_grad():
         for x, y in loader:
-            x = x.to(device)  # Move input image to the specified device
-            y = y.to(device).unsqueeze(1)  # Move mask to device, and add channel dimension
-            preds = torch.sigmoid(model(x))  # Get model predictions with sigmoid activation
-            preds = (preds > 0.5).float()  # Apply threshold to get binary predictions
-            num_correct += (preds == y).sum()  # Count the number of correct pixels
-            num_pixels += torch.numel(preds)  # Count total pixels
-            dice_score += (2 * (preds * y).sum()) / ((preds + y).sum() + 1e-8)  # Compute Dice score
-    print(f"Got {num_correct}/{num_pixels} with acc {num_correct/num_pixels*100:.2f}")
-    print(f"Dice score: {dice_score/len(loader)}")
+            x = x.to(device)
+            y = y.to(device).unsqueeze(1)
+            preds = torch.sigmoid(model(x))
+            preds = (preds > 0.5).float()
+            num_correct += (preds == y).sum().item()
+            num_pixels += torch.numel(preds)
+            dice_score += (2 * (preds * y).sum().item()) / (
+                (preds + y).sum().item() + 1e-8
+            )
+
+    # Calculate accuracy and dice score
+    accuracy = num_correct / num_pixels
+    avg_dice_score = dice_score / len(loader)
+
+    # print(f"Got {num_correct}/{num_pixels} with acc {accuracy*100:.2f}")
+    # print(f"Dice score: {avg_dice_score:.4f}")
+
+    return avg_dice_score  # Return both metrics
 
 def save_predictions_as_imgs(
     loader, model, folder="saved_images/", device="cuda"
