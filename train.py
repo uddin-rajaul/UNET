@@ -5,6 +5,7 @@ from albumentations.pytorch import ToTensorV2
 from tqdm import tqdm
 import torch.nn as nn
 import torch.optim as optim
+from model import UNET
 from utils import (
     load_checkpoint,
     save_checkpoint,
@@ -47,9 +48,10 @@ def train(loader, model, optimizer, loss_fn, scaler):
         targets = targets.float().unsqueeze(1).to(DEVICE)  # Move targets (masks) to the device
 
         # Forward pass with automatic mixed precision (AMP)
-        with torch.cuda.amp.autocast():  # Enables mixed precision for faster training
-            predictions = model(data)  # Get model predictions
-            loss = loss_fn(predictions, targets)  # Compute the loss
+        with torch.autocast(device_type='cuda', dtype=torch.float16):
+            predictions = model(data)
+            loss = loss_fn(predictions, targets)
+
 
         # Backward pass and optimization step
         optimizer.zero_grad()  # Clear gradients from the previous step
@@ -112,27 +114,35 @@ def main():
     if LOAD_MODEL:
         load_checkpoint(torch.load("my_checkpoint.pth.tar"), model)
 
-    scaler = torch.cuda.amp.GradScaler()  # Initialize mixed precision scaler
+    scaler = torch.amp.GradScaler()  # Initialize mixed precision scaler
     best_loss = float('inf')  # Track the best validation loss for model saving
 
     # Training loop for each epoch
     for epoch in range(NUM_EPOCHS):
         train(train_loader, model, optimizer, loss_fn, scaler)  # Train the model for one epoch
 
+        checkpoint = {
+            "state_dict": model.state_dict(),
+            "optimizer": optimizer.state_dict(),
+        }
+        save_checkpoint(checkpoint)  # Save the current model checkpoint
         # Check accuracy and calculate validation loss
-        val_loss = check_accuracy(val_loader, model, device=DEVICE)
+        check_accuracy(val_loader, model, device=DEVICE)
+
+        # print(f"Validation Accuracy: {val_accuracy * 100:.2f}%")
+        # print(f"Validation Dice Score: {avg_dice_score:.4f}")
 
         # Save the best model based on validation loss
-        if val_loss < best_loss:
-            best_loss = val_loss
-            model_save_path = "best_model.pth"
-            torch.save({
-                'epoch': epoch + 1,
-                'model_state_dict': model.state_dict(),
-                'optimizer_state_dict': optimizer.state_dict(),
-                'loss': val_loss,
-            }, model_save_path)  # Save the model
-            print(f"Best model saved to {model_save_path} with loss {best_loss}")
+        # if avg_dice_score < best_loss:
+        #     best_loss = avg_dice_score
+        #     model_save_path = "best_model.pth"
+        #     torch.save({
+        #         'epoch': epoch + 1,
+        #         'model_state_dict': model.state_dict(),
+        #         'optimizer_state_dict': optimizer.state_dict(),
+        #         'loss': avg_dice_score,
+        #     }, model_save_path)  # Save the model
+        #     print(f"Best model saved to {model_save_path} with loss {best_loss:.4f}")
 
         # Save example predictions for visualization
         save_predictions_as_imgs(val_loader, model, folder="saved_images/", device=DEVICE)
